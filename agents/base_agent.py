@@ -94,8 +94,18 @@ class BaseAgent:
     # 공개 메서드
     # ------------------------------------------------------------------
 
-    async def run(self, force_rerun: bool = False) -> AgentResult:
-        """에이전트 실행. force_rerun=True면 체크포인트 무시."""
+    async def run(
+        self,
+        force_rerun: bool = False,
+        feedback: Optional[str] = None,
+    ) -> AgentResult:
+        """에이전트 실행. force_rerun=True면 체크포인트 무시.
+
+        Args:
+            force_rerun: True면 이미 완료된 경우에도 재실행.
+            feedback: 재실행 시 사용자 수정 요청 메모.
+                      초기 메시지 맨 앞에 포함되어 에이전트에 전달된다.
+        """
         if not force_rerun and state.is_completed(self.AGENT_ID):
             path = state.get_result_path(self.AGENT_ID)
             content = Path(path).read_text(encoding="utf-8")
@@ -103,7 +113,7 @@ class BaseAgent:
             return AgentResult(self.AGENT_ID, content, path)
 
         print(f"  [{self.AGENT_ID}] 실행 시작...")
-        content = await self._run_tool_loop()
+        content = await self._run_tool_loop(feedback=feedback)
         result_path = self._save_result(content)
         state.mark_completed(self.AGENT_ID, result_path)
         print(f"  [{self.AGENT_ID}] 완료 → {result_path}")
@@ -119,16 +129,25 @@ class BaseAgent:
             raise FileNotFoundError(f"프롬프트 파일 없음: {self.PROMPT_FILE}")
         return path.read_text(encoding="utf-8")
 
-    def _build_initial_message(self) -> str:
+    def _build_initial_message(self, feedback: Optional[str] = None) -> str:
         """초기 사용자 메시지 구성.
 
         선행 결과가 있으면 파일 경로 목록을 포함하고,
         에이전트가 read_file 도구로 직접 읽도록 지시한다.
+        feedback이 있으면 맨 앞에 사용자 수정 요청으로 포함한다.
         """
-        parts = [
+        parts = []
+
+        if feedback:
+            parts.append(
+                f"## 사용자 수정 요청 (최우선 반영)\n{feedback}\n\n"
+                "위 수정 요청을 반드시 반영하여 분석을 다시 수행하세요.\n\n"
+            )
+
+        parts.append(
             "분석을 시작하세요. "
             "web_search 도구로 최신 데이터를 수집하고 심층 분석을 수행해주세요.\n"
-        ]
+        )
 
         if self.input_results:
             parts.append("\n## 선행 에이전트 결과 파일 (read_file 도구로 읽으세요)\n")
@@ -145,8 +164,8 @@ class BaseAgent:
         )
         return "".join(parts)
 
-    async def _run_tool_loop(self) -> str:
-        messages = [{"role": "user", "content": self._build_initial_message()}]
+    async def _run_tool_loop(self, feedback: Optional[str] = None) -> str:
+        messages = [{"role": "user", "content": self._build_initial_message(feedback=feedback)}]
         tools = [WEB_SEARCH_TOOL, READ_FILE_TOOL]
         tool_call_count = 0
 

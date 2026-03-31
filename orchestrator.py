@@ -169,9 +169,19 @@ async def run() -> None:
         approved = await _get_approval("시장 정의와 세그먼트를 승인하시겠습니까?")
         if approved:
             break
-        # 재실행 요청 시 체크포인트 초기화
+        # 수정 요청 입력
+        feedback = await _ask(
+            "\n수정 요청 사항을 입력하세요\n"
+            "(예: 'UPS를 분석 범위에서 제외해줘', 'AI cluster 세그먼트를 더 구체화해줘')\n"
+            "→ "
+        )
+        feedback = feedback.strip()
+        if not feedback:
+            feedback = None
+        print(f"\n  수정 요청 전달: {feedback or '(없음)'}")
+        # 체크포인트 초기화 후 재실행
         state.reset_agent("agent_a")
-        result_a = await agent_a.run(force_rerun=True)
+        result_a = await agent_a.run(force_rerun=True, feedback=feedback)
         print(f"\n{'='*60}")
         print(result_a.content)
 
